@@ -1,0 +1,49 @@
+{
+    "config": {
+        "wifi-ssid": {
+            "help": "WiFi SSID",
+            "value": "\"ErkanMasiina\""
+        },
+        "wifi-password": {
+            "help": "WiFi Password",
+            "value": "\"Kaktuskuusi\""
+        },
+        "esp-rx-pin": {
+            "help": "ESP8266 module RX pin",
+            "value": "PA_10"
+        },
+        "esp-tx-pin": {
+            "help": "ESP8266 module TX pin",
+            "value": "PA_9"
+        },
+        "mqtt-id": {
+            "help": "MQTT Client id",
+            "value": "\"Noppa5_id\""
+        },
+        "mqtt-broker-ip": {
+            "help": "MQTT Broker host ip.",
+            "value": "\"CHANGE_IF_USE_BROKER_IP\""
+        },
+      "mqtt-broker-hostname": {
+            "help": "MQTT Broker resolvable hostname.",
+            "value": "\"test.mosquitto.org\""
+        },
+        "mqtt-broker-port": {
+            "help": "MQTT Broker port",
+            "value": "1883"
+        },
+        "mqtt-topic": {
+            "help": "MQTT topic to publish",
+            "value": "\"Noppa_4.0_IN\""
+        }
+    },
+    "target_overrides": {
+        "*": {
+            "platform.stdio-convert-newlines": true,
+            "esp8266.provide-default" : false,
+            "esp8266.built-in-dns": true,
+            "platform.stdio-baud-rate": 115200,
+            "platform.stdio-buffered-serial": 1
+        }
+    }
+}
