@@ -3,3 +3,5 @@ BUILD
 mbed-os
 ADXL362
 mbed-mqtt
+Adafruit_SSD1331_MbedOS6
+Adafruit-GFX-MbedOS6

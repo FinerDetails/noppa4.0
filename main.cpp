@@ -6,21 +6,32 @@
 #include <cstdio>
 #include <cstring>
 #include "MQTTClient.h"
+#include "Adafruit_SSD1331.h"
+#include "Adafruit_GFX.h" 
 #define BUFF_SIZE 6
 
 // Library to use https://github.com/ARMmbed/mbed-mqtt
 
 // ADXL362::ADXL362(PinName CS, PinName MOSI, PinName MISO, PinName SCK) :
 ADXL362 ADXL362(A3,D11,D12,D13);
- 
+Adafruit_SSD1331 OLED(A2, A1, A5, A6, NC, A4); // cs, res, dc, mosi, (nc), sck
+//DigitalOut VCCEN(D3);
+//DigitalOut PMODEN(D5);
+// Definition of colours on the OLED display
+#define Black 0x0000
+#define White 0xFFFF
+
 //Threads
     Thread detect_thread;
+    Thread subscribe_and_screen_thread;
  
 int ADXL362_reg_print(int start, int length);
 int ADXL362_movement_detect();
 void publish_to_nodeRED();
 void MQTTdata(MQTT:: MessageData& ms);
 int acceleration3D(int8_t ax,int8_t ay,int8_t az);
+void subscribe_node_to_screen();
+void process_to_screen();
  
 int8_t x,y,z;
 int i = 0;
@@ -84,15 +95,33 @@ int main()
     ADXL362.set_mode(ADXL362::MEASUREMENT);
     ADXL362_reg_print(0, 0);
     detect_thread.start(ADXL362_movement_detect);
+    subscribe_and_screen_thread.start(subscribe_node_to_screen);
+
 
     while(1){
-    printf("Acceleration 3D %d\n", acceleration3D(x,y,z));
-    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-    ThisThread::sleep_for(1s);
-    client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);
-    ThisThread::sleep_for(500ms);
+        printf("Acceleration 3D %d\n", acceleration3D(x,y,z));
+//      client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
+        ThisThread::sleep_for(1s);
+//      client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);
+//      ThisThread::sleep_for(500ms);
     }
 }
+
+void subscribe_node_to_screen()
+{
+    while(1){
+        client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
+        /*int sub = client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
+        if(sub != 1)
+        {
+            process_to_screen();
+        }*/
+        ThisThread::sleep_for(100ms);
+        client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);
+        ThisThread::sleep_for(100ms);
+    }
+}
+
 int ADXL362_movement_detect()
 {
     int8_t x1,y1,z1,x2,y2,z2,dx,dy,dz;
@@ -149,6 +178,39 @@ void MQTTdata(MQTT::MessageData& ms){
     printf("Message arrived: qos %d, retained %d, dup %d, packetid %d\n", message.qos, message.retained, message.dup, message.id);
     sprintf(node_data,"%.*s\0",message.payloadlen ,(char*)message.payload);
     printf("Payload: %.*s\n", message.payloadlen, node_data);
+    process_to_screen();
+}
+
+void process_to_screen() {
+    printf("process_to_screen ran\n");
+
+        OLED.begin(); // initialization of display object
+        OLED.clearScreen(); 
+        OLED.fillScreen(White);
+        OLED.setTextColor(Black);
+        OLED.setCursor(20,40);
+        //OLED.setTextSize(2);
+        OLED.setRotation(180);
+    
+        if(strcmp( node_data, "1") == 0) {
+            OLED.printf("1");
+            ThisThread::sleep_for(1s); // wait 1 s
+        } else if (strcmp( node_data, "2") == 0) {
+            OLED.printf("2");
+            ThisThread::sleep_for(1s); // wait 1 s
+        } else if (strcmp( node_data, "3") == 0) {
+            OLED.printf("3");
+            ThisThread::sleep_for(1s); // wait 1 s
+        } else if (strcmp( node_data, "4") == 0) {
+            OLED.printf("4");
+            ThisThread::sleep_for(1s); // wait 1 s
+        } else if (strcmp( node_data, "5") == 0) {
+            OLED.printf("5");
+            ThisThread::sleep_for(1s); // wait 1 s
+        } else if (strcmp( node_data, "6") == 0) {
+            OLED.printf("6");
+            ThisThread::sleep_for(1s); // wait 1 s
+        }
 }
 
 int acceleration3D(int8_t ax,int8_t ay,int8_t az){
