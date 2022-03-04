@@ -18,7 +18,7 @@
         },
         "mqtt-id": {
             "help": "MQTT Client id",
-            "value": "\"Noppa5_id\""
+            "value": "\"Noppa5_id3232313451412\""
         },
         "mqtt-broker-ip": {
             "help": "MQTT Broker host ip.",
@@ -32,9 +32,13 @@
             "help": "MQTT Broker port",
             "value": "1883"
         },
-        "mqtt-topic": {
+        "mqtt-topic-to-node-red": {
             "help": "MQTT topic to publish",
-            "value": "\"Noppa_4.0_IN\""
+            "value": "\"noppa4_to_node\""
+        },
+        "mqtt-topic-from-node-red": {
+            "help": "MQTT topic to publish",
+            "value": "\"noppa4_from_node\""
         }
     },
     "target_overrides": {

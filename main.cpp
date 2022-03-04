@@ -3,6 +3,9 @@
 #include "ADXL362.h"
 #include <cmath>
 #include <MQTTClientMbedOs.h>
+#include <cstdio>
+#include <cstring>
+#include "MQTTClient.h"
 #define BUFF_SIZE 6
 
 // Library to use https://github.com/ARMmbed/mbed-mqtt
@@ -13,15 +16,15 @@ ADXL362 ADXL362(A3,D11,D12,D13);
 //Threads
     Thread detect_thread;
  
-DigitalOut moveLed(D3);
- 
 int ADXL362_reg_print(int start, int length);
 int ADXL362_movement_detect();
+void publish_to_nodeRED();
+void MQTTdata(MQTT:: MessageData& ms);
 int acceleration3D(int8_t ax,int8_t ay,int8_t az);
  
 int8_t x,y,z;
-int movementDetected = 0;
 int i = 0;
+char node_data[64];
 
 TCPSocket socket;
 MQTTClient client(&socket);
@@ -70,47 +73,25 @@ int main()
     //sprintf(buffer, "1");
 
     socket.open(&esp);
-    printf("PERKELE\n");
     socket.connect(MQTTBroker);
-    printf("NYT\n");
     client.connect(data);
-    printf("VITTU\n");
-    printf("TOIMI\n");
-    printf("SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+    
+
     
     ADXL362.reset();
-    printf("ADXL362.reset()\n");
      // we need to wait at least 500ms after ADXL362 reset
     ThisThread::sleep_for(600ms);
-    printf("ThisThread::sleep_for(600ms)\n");
     ADXL362.set_mode(ADXL362::MEASUREMENT);
-    printf("ADXL362.set_mode(ADXL362::MEASUREMENT)\n");
     ADXL362_reg_print(0, 0);
-    printf("ADXL362_reg_print(0, 0)\n");
     detect_thread.start(ADXL362_movement_detect);
-    printf("started new thread\n");
 
     while(1){
-    moveLed.write(movementDetected);
-    if(movementDetected){
-        i += 1;
-        printf("i = %d\n", i);
-        }
     printf("Acceleration 3D %d\n", acceleration3D(x,y,z));
+    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
     ThisThread::sleep_for(1s);
+    client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);
+    ThisThread::sleep_for(500ms);
     }
-}
-void publish_to_nodeRED()
-{
-        MQTT::Message msg;
-        msg.qos = MQTT::QOS0;
-        msg.retained = false;
-        msg.dup = false;
-        //msg.payload = (void*)buffer;
-        msg.payload = (void*)"1";
-        msg.payloadlen = 1;
-        client.publish(MBED_CONF_APP_MQTT_TOPIC, msg);
-        printf("\nAttempting to publish\n");
 }
 int ADXL362_movement_detect()
 {
@@ -133,7 +114,7 @@ int ADXL362_movement_detect()
         dy=abs(y1 - y2);
         dz=abs(z1 - z2);
 
-        printf("\nx %d,y %d,z %d\n",dx, dy, dz);
+        //printf("\nx %d,y %d,z %d\n",dx, dy, dz);
 
         if (dx>10 || dy>10 || dz>10){
             detect = 1;
@@ -143,13 +124,33 @@ int ADXL362_movement_detect()
 
         else{
             detect = 0;
-        }
-        movementDetected = detect;    
+        }   
         //printf("x = %3d    y = %3d    z = %3d   dx = %3d    dy = %3d    dz = %3d\r\n",x,y,z,dx,dy,dz);
         ThisThread::sleep_for(100ms);
         }    
 }
- 
+void publish_to_nodeRED()
+{
+        MQTT::Message msg;
+        msg.qos = MQTT::QOS0;
+        msg.retained = false;
+        msg.dup = false;
+        //msg.payload = (void*)buffer;
+        msg.payload = (void*)"1";
+        msg.payloadlen = 1;
+        client.publish(MBED_CONF_APP_MQTT_TOPIC_TO_NODE_RED, msg);
+        printf("\nAttempting to publish\n");
+}
+
+void MQTTdata(MQTT::MessageData& ms){
+
+    printf("\nMQTTdata ran\n");
+    MQTT::Message &message = ms.message;
+    printf("Message arrived: qos %d, retained %d, dup %d, packetid %d\n", message.qos, message.retained, message.dup, message.id);
+    sprintf(node_data,"%.*s\0",message.payloadlen ,(char*)message.payload);
+    printf("Payload: %.*s\n", message.payloadlen, node_data);
+}
+
 int acceleration3D(int8_t ax,int8_t ay,int8_t az){
     float acc3D;
     static int count = 0;
@@ -393,5 +394,3 @@ int ADXL362_reg_print(int start, int length)
     }
     return(0);    
 }
-
-
