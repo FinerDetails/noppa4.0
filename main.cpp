@@ -23,8 +23,10 @@ Adafruit_SSD1331 OLED(A2, A1, A5, A6, NC, A4); // cs, res, dc, mosi, (nc), sck
 
 //Threads
     Thread detect_thread;
+    Thread publish_thread;
     Thread subscribe_and_screen_thread;
- 
+
+void connect_to_wifi();
 int ADXL362_reg_print(int start, int length);
 int ADXL362_movement_detect();
 void publish_to_nodeRED();
@@ -39,10 +41,10 @@ char node_data[64];
 
 TCPSocket socket;
 MQTTClient client(&socket);
+ESP8266Interface esp(MBED_CONF_APP_ESP_TX_PIN, MBED_CONF_APP_ESP_RX_PIN);
 
 int main()
 {
-    ESP8266Interface esp(MBED_CONF_APP_ESP_TX_PIN, MBED_CONF_APP_ESP_RX_PIN);
     
     //Store device IP
     SocketAddress deviceIP;
@@ -53,17 +55,7 @@ int main()
     //MQTTClient client(&socket);
     
     printf("\nConnecting wifi..\n");
-
-    int ret = esp.connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
-
-    if(ret != 0)
-    {
-        printf("\nConnection error\n");
-    }
-    else
-    {
-        printf("\nConnection success\n");
-    }
+    connect_to_wifi();
 
     esp.get_ip_address(&deviceIP);
     printf("IP via DHCP: %s\n", deviceIP.get_ip_address());
@@ -95,6 +87,7 @@ int main()
     ADXL362.set_mode(ADXL362::MEASUREMENT);
     ADXL362_reg_print(0, 0);
     detect_thread.start(ADXL362_movement_detect);
+    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
     subscribe_and_screen_thread.start(subscribe_node_to_screen);
 
 
@@ -107,18 +100,27 @@ int main()
     }
 }
 
+void connect_to_wifi(){
+    int ret = esp.connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
+    if(ret != 0)
+    {
+        printf("\nConnection error\nReconnecting...\n");
+        ThisThread::sleep_for(5s);
+        connect_to_wifi();
+    }
+    else
+    {
+        printf("\nConnection success\n");
+    }
+}
 void subscribe_node_to_screen()
 {
     while(1){
-        client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-        /*int sub = client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-        if(sub != 1)
-        {
-            process_to_screen();
-        }*/
-        ThisThread::sleep_for(100ms);
-        client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);
-        ThisThread::sleep_for(100ms);
+       /*client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
+        ThisThread::sleep_for(500ms);
+        client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);*/
+        client.yield();
+        ThisThread::sleep_for(250ms);
     }
 }
 
@@ -145,11 +147,18 @@ int ADXL362_movement_detect()
 
         //printf("\nx %d,y %d,z %d\n",dx, dy, dz);
 
-        if (dx>10 || dy>10 || dz>10){
+        if (dx + dy + dz >= 35){
             detect = 1;
             publish_to_nodeRED();
             printf("\nCalled publish_to_nodeRED\n");
+            ThisThread::sleep_for(1s);
         }
+
+         /*if (dx>10 || dy>10 || dz>10){
+            detect = 1;
+            publish_to_nodeRED();
+            printf("\nCalled publish_to_nodeRED\n");
+        }*/
 
         else{
             detect = 0;
@@ -160,15 +169,15 @@ int ADXL362_movement_detect()
 }
 void publish_to_nodeRED()
 {
-        MQTT::Message msg;
-        msg.qos = MQTT::QOS0;
-        msg.retained = false;
-        msg.dup = false;
-        //msg.payload = (void*)buffer;
-        msg.payload = (void*)"1";
-        msg.payloadlen = 1;
-        client.publish(MBED_CONF_APP_MQTT_TOPIC_TO_NODE_RED, msg);
-        printf("\nAttempting to publish\n");
+    MQTT::Message msg;
+    msg.qos = MQTT::QOS0;
+    msg.retained = false;
+    msg.dup = false;
+    //msg.payload = (void*)buffer;
+    msg.payload = (void*)"1";
+    msg.payloadlen = 1;
+    client.publish(MBED_CONF_APP_MQTT_TOPIC_TO_NODE_RED, msg);
+    printf("\nAttempting to publish\n");
 }
 
 void MQTTdata(MQTT::MessageData& ms){
@@ -186,11 +195,11 @@ void process_to_screen() {
 
         OLED.begin(); // initialization of display object
         OLED.clearScreen(); 
-        OLED.fillScreen(White);
-        OLED.setTextColor(Black);
-        OLED.setCursor(20,40);
-        //OLED.setTextSize(2);
-        OLED.setRotation(180);
+        OLED.fillScreen(Black);
+        OLED.setTextColor(White);
+        OLED.setCursor(0,0);
+        OLED.setTextSize(2);
+        //OLED.setRotation(180);
     
         if(strcmp( node_data, "1") == 0) {
             OLED.printf("1");
