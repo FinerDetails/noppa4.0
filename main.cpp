@@ -26,7 +26,6 @@ Adafruit_SSD1331 OLED(A2, A1, A5, A6, NC, A4); // cs, res, dc, mosi, (nc), sck
     Thread publish_thread;
     Thread subscribe_and_screen_thread;
 
-void connect_to_wifi();
 int ADXL362_reg_print(int start, int length);
 int ADXL362_movement_detect();
 void publish_to_nodeRED();
@@ -55,7 +54,15 @@ int main()
     //MQTTClient client(&socket);
     
     printf("\nConnecting wifi..\n");
-    connect_to_wifi();
+    int ret = esp.connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
+    if(ret != 0)
+    {
+        printf("\nConnection error\n");
+    }
+    else
+    {
+        printf("\nConnection success\n");
+    }
 
     esp.get_ip_address(&deviceIP);
     printf("IP via DHCP: %s\n", deviceIP.get_ip_address());
@@ -86,8 +93,11 @@ int main()
     ThisThread::sleep_for(600ms);
     ADXL362.set_mode(ADXL362::MEASUREMENT);
     ADXL362_reg_print(0, 0);
+
+    OLED.begin(); // initialization of display object
+
     detect_thread.start(ADXL362_movement_detect);
-    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
+//    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
     subscribe_and_screen_thread.start(subscribe_node_to_screen);
 
 
@@ -100,21 +110,9 @@ int main()
     }
 }
 
-void connect_to_wifi(){
-    int ret = esp.connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
-    if(ret != 0)
-    {
-        printf("\nConnection error\nReconnecting...\n");
-        ThisThread::sleep_for(5s);
-        connect_to_wifi();
-    }
-    else
-    {
-        printf("\nConnection success\n");
-    }
-}
 void subscribe_node_to_screen()
 {
+    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
     while(1){
        /*client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
         ThisThread::sleep_for(500ms);
@@ -147,7 +145,7 @@ int ADXL362_movement_detect()
 
         //printf("\nx %d,y %d,z %d\n",dx, dy, dz);
 
-        if (dx + dy + dz >= 35){
+        if (dx + dy + dz >= 40){
             detect = 1;
             publish_to_nodeRED();
             printf("\nCalled publish_to_nodeRED\n");
@@ -193,32 +191,44 @@ void MQTTdata(MQTT::MessageData& ms){
 void process_to_screen() {
     printf("process_to_screen ran\n");
 
-        OLED.begin(); // initialization of display object
+        //OLED.begin(); // initialization of display object
         OLED.clearScreen(); 
-        OLED.fillScreen(Black);
-        OLED.setTextColor(White);
-        OLED.setCursor(0,0);
-        OLED.setTextSize(2);
+        OLED.fillScreen(White);
+        OLED.setTextColor(Black);
+        OLED.setCursor(8,8);
+        OLED.setTextSize(3);
         //OLED.setRotation(180);
     
+
         if(strcmp( node_data, "1") == 0) {
-            OLED.printf("1");
-            ThisThread::sleep_for(1s); // wait 1 s
+            OLED.fillCircle(48, 32, 8, Black);
         } else if (strcmp( node_data, "2") == 0) {
-            OLED.printf("2");
-            ThisThread::sleep_for(1s); // wait 1 s
+            OLED.fillCircle(36, 20, 8, Black); //vasen
+            OLED.fillCircle(60, 44, 8, Black); //oikea
         } else if (strcmp( node_data, "3") == 0) {
-            OLED.printf("3");
-            ThisThread::sleep_for(1s); // wait 1 s
+            OLED.fillCircle(32, 16, 8, Black); //vasen, ylä
+            OLED.fillCircle(48, 32, 8, Black); //keski
+            OLED.fillCircle(64, 48, 8, Black); //oikea, ala
         } else if (strcmp( node_data, "4") == 0) {
-            OLED.printf("4");
-            ThisThread::sleep_for(1s); // wait 1 s
+            OLED.fillCircle(36, 20, 8, Black); //vasen, ylä
+            OLED.fillCircle(60, 20, 8, Black); //oikea, ylä
+            OLED.fillCircle(60, 44, 8, Black); //oikea, ala
+            OLED.fillCircle(36, 44, 8, Black); //vasen, ala
         } else if (strcmp( node_data, "5") == 0) {
-            OLED.printf("5");
-            ThisThread::sleep_for(1s); // wait 1 s
+            OLED.fillCircle(32, 16, 8, Black); //vasen, ylä
+            OLED.fillCircle(64, 16, 8, Black); //oikea, ylä
+            OLED.fillCircle(48, 32, 8, Black); //keskellä
+            OLED.fillCircle(32, 48, 8, Black); //vasen, ala
+            OLED.fillCircle(64, 48, 8, Black); //oikea, ala
         } else if (strcmp( node_data, "6") == 0) {
-            OLED.printf("6");
-            ThisThread::sleep_for(1s); // wait 1 s
+            OLED.fillCircle(24, 20, 8, Black); //vasen, ylä
+            OLED.fillCircle(48, 20, 8, Black); //keskellä, ylä
+            OLED.fillCircle(72, 20, 8, Black); //oikea, ylä
+            OLED.fillCircle(72, 44, 8, Black); //oikea, ala
+            OLED.fillCircle(48, 44, 8, Black); //keskellä, ala
+            OLED.fillCircle(24, 44, 8, Black); //vasen, ala
+        } else{
+            OLED.printf("%s", node_data);
         }
 }
 
