@@ -8,15 +8,10 @@
 #include "MQTTClient.h"
 #include "Adafruit_SSD1331.h"
 #include "Adafruit_GFX.h" 
-#define BUFF_SIZE 6
 
-// Library to use https://github.com/ARMmbed/mbed-mqtt
-
-// ADXL362::ADXL362(PinName CS, PinName MOSI, PinName MISO, PinName SCK) :
-ADXL362 ADXL362(A3,D11,D12,D13);
+ADXL362 ADXL362(A3,D11,D12,D13); // cs, mosi, miso, sck
 Adafruit_SSD1331 OLED(A2, A1, A5, A6, NC, A4); // cs, res, dc, mosi, (nc), sck
-//DigitalOut VCCEN(D3);
-//DigitalOut PMODEN(D5);
+
 // Definition of colours on the OLED display
 #define Black 0x0000
 #define White 0xFFFF
@@ -24,18 +19,17 @@ Adafruit_SSD1331 OLED(A2, A1, A5, A6, NC, A4); // cs, res, dc, mosi, (nc), sck
 //Threads
     Thread detect_thread;
     Thread publish_thread;
-    Thread subscribe_and_screen_thread;
+    Thread subscribe_and_display_thread;
 
+//prototypes
 int ADXL362_reg_print(int start, int length);
 int ADXL362_movement_detect();
 void publish_to_nodeRED();
 void MQTTdata(MQTT:: MessageData& ms);
-int acceleration3D(int8_t ax,int8_t ay,int8_t az);
 void subscribe_node_to_screen();
 void process_to_screen();
  
 int8_t x,y,z;
-int i = 0;
 char node_data[64];
 
 TCPSocket socket;
@@ -44,14 +38,10 @@ ESP8266Interface esp(MBED_CONF_APP_ESP_TX_PIN, MBED_CONF_APP_ESP_RX_PIN);
 
 int main()
 {
-    
     //Store device IP
     SocketAddress deviceIP;
     //Store broker IP
     SocketAddress MQTTBroker;
-    
-    //TCPSocket socket;
-    //MQTTClient client(&socket);
     
     printf("\nConnecting wifi..\n");
     int ret = esp.connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
@@ -66,11 +56,8 @@ int main()
 
     esp.get_ip_address(&deviceIP);
     printf("IP via DHCP: %s\n", deviceIP.get_ip_address());
+
     
-     // Use with IP
-    //SocketAddress MQTTBroker(MBED_CONF_APP_MQTT_BROKER_IP, MBED_CONF_APP_MQTT_BROKER_PORT);
-    
-    // Use with DNS
     esp.gethostbyname(MBED_CONF_APP_MQTT_BROKER_HOSTNAME, &MQTTBroker, NSAPI_IPv4, "esp");
     MQTTBroker.set_port(MBED_CONF_APP_MQTT_BROKER_PORT);
 
@@ -79,44 +66,30 @@ int main()
     char *id = MBED_CONF_APP_MQTT_ID;
     data.clientID.cstring = id;
 
-    //char buffer[1];
-    //sprintf(buffer, "1");
-
     socket.open(&esp);
     socket.connect(MQTTBroker);
     client.connect(data);
     
-
-    
+    // initialization accelerometer
     ADXL362.reset();
-     // we need to wait at least 500ms after ADXL362 reset
     ThisThread::sleep_for(600ms);
     ADXL362.set_mode(ADXL362::MEASUREMENT);
     ADXL362_reg_print(0, 0);
 
-    OLED.begin(); // initialization of display object
+    // initialization of display object
+    OLED.begin();
+
 
     detect_thread.start(ADXL362_movement_detect);
-//    client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-    subscribe_and_screen_thread.start(subscribe_node_to_screen);
-
-
-    while(1){
-        printf("Acceleration 3D %d\n", acceleration3D(x,y,z));
-//      client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-        ThisThread::sleep_for(1s);
-//      client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);
-//      ThisThread::sleep_for(500ms);
-    }
+    subscribe_and_display_thread.start(subscribe_node_to_screen);
 }
 
 void subscribe_node_to_screen()
 {
+    //Subscribes to an mqtt topic recieving messages back from nodeRED and keeps refreshing it.
     client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-    while(1){
-       /*client.subscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED, MQTT::QOS0, MQTTdata);
-        ThisThread::sleep_for(500ms);
-        client.unsubscribe(MBED_CONF_APP_MQTT_TOPIC_FROM_NODE_RED);*/
+    while(1)
+    {
         client.yield();
         ThisThread::sleep_for(250ms);
     }
@@ -124,9 +97,12 @@ void subscribe_node_to_screen()
 
 int ADXL362_movement_detect()
 {
+    //Measures if the combined change of acceloration exceeds the set threshold.
     int8_t x1,y1,z1,x2,y2,z2,dx,dy,dz;
     int detect;
-    while(1){
+    int8_t combined_inertia;
+    while(1)
+    {
         x1=ADXL362.scanx_u8();
         y1=ADXL362.scany_u8();
         z1=ADXL362.scanz_u8();
@@ -142,132 +118,106 @@ int ADXL362_movement_detect()
         dx=abs(x1 - x2);
         dy=abs(y1 - y2);
         dz=abs(z1 - z2);
+        combined_inertia = dx + dy + dz;
 
-        //printf("\nx %d,y %d,z %d\n",dx, dy, dz);
-
-        if (dx + dy + dz >= 40){
-            detect = 1;
+        if (abs(combined_inertia) > 70)
+        {
             publish_to_nodeRED();
-            printf("\nCalled publish_to_nodeRED\n");
-            ThisThread::sleep_for(1s);
+            ThisThread::sleep_for(900ms);
         }
 
-         /*if (dx>10 || dy>10 || dz>10){
-            detect = 1;
-            publish_to_nodeRED();
-            printf("\nCalled publish_to_nodeRED\n");
-        }*/
-
-        else{
-            detect = 0;
-        }   
-        //printf("x = %3d    y = %3d    z = %3d   dx = %3d    dy = %3d    dz = %3d\r\n",x,y,z,dx,dy,dz);
+        printf("x = %3d    y = %3d    z = %3d   dx = %3d    dy = %3d    dz = %3d    combined = %3d\r\n",x,y,z,dx,dy,dz,combined_inertia);
         ThisThread::sleep_for(100ms);
-        }    
+    }    
 }
+
 void publish_to_nodeRED()
 {
+    //Sets up fields for an MQTT packet and publishes it to topic defined in mbed_app.json to NodeRED.
     MQTT::Message msg;
     msg.qos = MQTT::QOS0;
     msg.retained = false;
     msg.dup = false;
-    //msg.payload = (void*)buffer;
     msg.payload = (void*)"1";
     msg.payloadlen = 1;
     client.publish(MBED_CONF_APP_MQTT_TOPIC_TO_NODE_RED, msg);
-    printf("\nAttempting to publish\n");
+    printf("\n\nAttempted to publish to nodeRED\n\n");
 }
 
-void MQTTdata(MQTT::MessageData& ms){
-
-    printf("\nMQTTdata ran\n");
+void MQTTdata(MQTT::MessageData& ms)
+{
+    //A function called by the MQTT subscribe() method.
+    //Activates when NodeRED publishes a message back to the subscribed topic.
+    //Copies the payload of the message into an object.
     MQTT::Message &message = ms.message;
-    printf("Message arrived: qos %d, retained %d, dup %d, packetid %d\n", message.qos, message.retained, message.dup, message.id);
+    printf("\n\nMessage arrived: qos %d, retained %d, dup %d, packetid %d\n", message.qos, message.retained, message.dup, message.id);
     sprintf(node_data,"%.*s\0",message.payloadlen ,(char*)message.payload);
-    printf("Payload: %.*s\n", message.payloadlen, node_data);
+    printf("Payload: %.*s\n\n", message.payloadlen, node_data);
     process_to_screen();
 }
 
-void process_to_screen() {
-    printf("process_to_screen ran\n");
+void process_to_screen()
+{
+    //Controls the screen based on the number randomized by nodeRED.
+    //If the dice is set to roll a number higher than 6 in nodeRED, the screen prints just a number instead of dots. 
+    OLED.clearScreen(); 
+    OLED.fillScreen(White);
+    OLED.setTextColor(Black);
+    OLED.setCursor(8,8);
+    OLED.setTextSize(3);
+        
 
-        //OLED.begin(); // initialization of display object
-        OLED.clearScreen(); 
-        OLED.fillScreen(White);
-        OLED.setTextColor(Black);
-        OLED.setCursor(8,8);
-        OLED.setTextSize(3);
-        //OLED.setRotation(180);
-    
+    if(strcmp( node_data, "1") == 0)
+    {
+        OLED.fillCircle(48, 32, 8, Black);
+    }
 
-        if(strcmp( node_data, "1") == 0) {
-            OLED.fillCircle(48, 32, 8, Black);
-        } else if (strcmp( node_data, "2") == 0) {
-            OLED.fillCircle(36, 20, 8, Black); //vasen
-            OLED.fillCircle(60, 44, 8, Black); //oikea
-        } else if (strcmp( node_data, "3") == 0) {
-            OLED.fillCircle(32, 16, 8, Black); //vasen, ylä
-            OLED.fillCircle(48, 32, 8, Black); //keski
-            OLED.fillCircle(64, 48, 8, Black); //oikea, ala
-        } else if (strcmp( node_data, "4") == 0) {
-            OLED.fillCircle(36, 20, 8, Black); //vasen, ylä
-            OLED.fillCircle(60, 20, 8, Black); //oikea, ylä
-            OLED.fillCircle(60, 44, 8, Black); //oikea, ala
-            OLED.fillCircle(36, 44, 8, Black); //vasen, ala
-        } else if (strcmp( node_data, "5") == 0) {
-            OLED.fillCircle(32, 16, 8, Black); //vasen, ylä
-            OLED.fillCircle(64, 16, 8, Black); //oikea, ylä
-            OLED.fillCircle(48, 32, 8, Black); //keskellä
-            OLED.fillCircle(32, 48, 8, Black); //vasen, ala
-            OLED.fillCircle(64, 48, 8, Black); //oikea, ala
-        } else if (strcmp( node_data, "6") == 0) {
-            OLED.fillCircle(24, 20, 8, Black); //vasen, ylä
-            OLED.fillCircle(48, 20, 8, Black); //keskellä, ylä
-            OLED.fillCircle(72, 20, 8, Black); //oikea, ylä
-            OLED.fillCircle(72, 44, 8, Black); //oikea, ala
-            OLED.fillCircle(48, 44, 8, Black); //keskellä, ala
-            OLED.fillCircle(24, 44, 8, Black); //vasen, ala
-        } else{
-            OLED.printf("%s", node_data);
-        }
+    else if (strcmp( node_data, "2") == 0)
+    {
+        OLED.fillCircle(36, 20, 8, Black); //vasen, ylä
+        OLED.fillCircle(60, 44, 8, Black); //oikea, ala
+    }
+
+    else if (strcmp( node_data, "3") == 0)
+    {
+        OLED.fillCircle(32, 16, 8, Black); //vasen, ylä
+        OLED.fillCircle(48, 32, 8, Black); //keski
+        OLED.fillCircle(64, 48, 8, Black); //oikea, ala
+    }
+
+    else if (strcmp( node_data, "4") == 0)
+    {
+        OLED.fillCircle(36, 20, 8, Black); //vasen, ylä
+        OLED.fillCircle(60, 20, 8, Black); //oikea, ylä
+        OLED.fillCircle(60, 44, 8, Black); //oikea, ala
+        OLED.fillCircle(36, 44, 8, Black); //vasen, ala
+    }
+
+    else if (strcmp( node_data, "5") == 0)
+    {
+        OLED.fillCircle(32, 16, 8, Black); //vasen, ylä
+        OLED.fillCircle(64, 16, 8, Black); //oikea, ylä
+        OLED.fillCircle(48, 32, 8, Black); //keskellä
+        OLED.fillCircle(32, 48, 8, Black); //vasen, ala
+        OLED.fillCircle(64, 48, 8, Black); //oikea, ala
+    }
+        
+    else if (strcmp( node_data, "6") == 0)
+    {
+        OLED.fillCircle(24, 20, 8, Black); //vasen, ylä
+        OLED.fillCircle(48, 20, 8, Black); //keskellä, ylä
+        OLED.fillCircle(72, 20, 8, Black); //oikea, ylä
+        OLED.fillCircle(72, 44, 8, Black); //oikea, ala
+        OLED.fillCircle(48, 44, 8, Black); //keskellä, ala
+        OLED.fillCircle(24, 44, 8, Black); //vasen, ala
+    }
+        
+    else
+    {
+        OLED.printf("%s", node_data);
+    }
 }
 
-int acceleration3D(int8_t ax,int8_t ay,int8_t az){
-    float acc3D;
-    static int count = 0;
-    static int8_t x1[BUFF_SIZE];
-    static int8_t y1[BUFF_SIZE];
-    static int8_t z1[BUFF_SIZE];
-    float averx;
-    float avery;
-    float averz;
-    
-    if(count >= BUFF_SIZE){
-        count = 0;
-        }
-    
-    x1[count]=ax;
-    y1[count]=ay;
-    z1[count]=az;
-    
-    count += 1;
-    
-    averx=0.0;
-    avery=0.0;
-    averz=0.0;
-    for(int k=0; k<BUFF_SIZE; k++){
-        averx = averx+(float)x1[k];
-        avery = avery+(float)y1[k];
-        averz = averz+(float)z1[k];
-        }
-    averx=averx/BUFF_SIZE;
-    avery=avery/BUFF_SIZE;
-    averz=averz/BUFF_SIZE;
-    
-    acc3D = sqrtf(pow(averx,2)+pow(avery,2)+pow(averz,2));
-    //acc3D = sqrtf(pow(3.0,2) + pow(3.0,2) + pow(3.0,2));
-    return((int)acc3D); 
-}  
  
 int ADXL362_reg_print(int start, int length)
 /*
